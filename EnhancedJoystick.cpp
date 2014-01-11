@@ -1,5 +1,5 @@
 #include <cmath>
-#include "Joystick.h"
+#include <Joystick.h>
 #include "EnhancedJoystick.h"
 #include "Controls.h"
 #include "main.h"
