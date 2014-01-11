@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cmath>
+#include "612.h"
 #include "EnhancedRobotDrive.h"
 #include "main.h"
 #include "updateRegistry.h"
@@ -10,8 +11,11 @@
 #include "Hardware.h"
 #include "Controls.h"
 #include "Relay.h"
-#include "vision/RobotVision.h"
+#include "vision/DriverVision.h"
+#include "DigitalInput.h"
+#include "Relay.h"
 
+robot_class* robot=NULL;
 const float AUTO_ANGLES[] = {30.5f,24.0f};
 static const float AUTO_SPEED = 0.0f;
 float AUTO_ANGLE = 0.0f;
@@ -19,6 +23,7 @@ float AUTO_ANGLE = 0.0f;
 robot_class::robot_class():
         drive_gamepad(1,(void*)this),
         gunner_gamepad(2,(void*)this),
+        camera(NULL),engine(NULL),
         LEDring(ledring_spike.moduleNumber,ledring_spike.channel),
         autoSwitch(AutoSelectSwitch.moduleNumber,AutoSelectSwitch.channel)
 {
@@ -33,6 +38,10 @@ robot_class::robot_class():
     drive_gamepad.addBtn(DRIVER_BTN_CLIMBING_STATE,&setClimbing,(void*)this);
     drive_gamepad.addBtn(DRIVER_BTN_NORMAL_STATE,&setNormal,(void*)this);
     dataLogger = new DataLogger(shooter,(void*)this);
+    robot=this;
+    driveTrain->SetSafetyEnabled(false);
+    compressor = new Relay(2,2,Relay::kForwardOnly);
+    pnumSwitch =  new DigitalInput(2,2);
 }
 
 void robot_class::RobotInit() {
@@ -40,10 +49,8 @@ void robot_class::RobotInit() {
 }
 
 void robot_class::DisabledInit() {
+    std::printf("disabled init\n");
     disableRegistry.updateAll();
-    stop_vision();
-    AxisCamera::DeleteInstance();
-    camera=NULL;
 }
 
 void robot_class::DisabledPeriodic() {
@@ -89,28 +96,42 @@ void robot_class::TeleopPeriodic() {
 }
 
 void robot_class::TestInit() {
+    std::printf("test init\n");
+    stop_vision();
+//    driveTrain->SetSafetyEnabled(false);
+    driveTrain->TankDrive(0.0f,0.0f);
+//    LEDring.Set(Relay::kForward);
     init_vision();
-    driveTrain->SetSafetyEnabled(false);
-    driveTrain -> TankDrive(0.0f,0.0f);
-    LEDring.Set(Relay::kForward);
-    engine->startContinuous();
+    std::printf("good\n");
+    std::printf("engine: %p\n",engine);
+//    engine->startContinuous();
+    std::printf("Pnum stuff\n");
+    compressor -> Set(Relay::kOn);
 }
 
 void robot_class::TestPeriodic() {
 //    engine->getTargetsNow();
+    //switch is bool
+    if (pnumSwitch->Get() == 1)
+        compressor->Set(Relay::kOn);
+    else
+        compressor->Set(Relay::kOff);
 }
 
 void robot_class::init_vision() {
-    if(camera==NULL) {
+    std::printf("init vision\n");
+    engine = new DriverVision();
+/*    if(camera==NULL) {
         camera=&AxisCamera::GetInstance(CAMERA_IP);
-        engine = new RobotVision(camera);
-        // Camera sometimes freezes and needs to be reset
         camera->WriteBrightness(0);
         camera->WriteBrightness(50);
-    }
+        engine = new RobotVision(camera);
+        // Camera sometimes freezes and needs to be reset
+    }*/
 }
 
 void robot_class::stop_vision() {
+    std::printf("stop vision\n");
     if(engine!=NULL) {
         if(engine->isContinuousRunning()) {
             engine->stopContinuous();
@@ -118,10 +139,10 @@ void robot_class::stop_vision() {
         delete engine;
         engine=NULL;
     }
-    if(camera!=NULL) {
-        delete camera;
+/*    if(camera!=NULL) {
+        AxisCamera::DeleteInstance(); // do not delete camera ourselves
         camera=NULL;
-    }
+    }*/
 }
 
 void robot_class::setClimbing(void* o) {
